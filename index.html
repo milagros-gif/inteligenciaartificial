@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detector de Manzanas</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest"></script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #ffe6ef, #fff7fa);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .contenedor {
+            width: 90%;
+            max-width: 600px;
+            background: white;
+            padding: 35px;
+            border-radius: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            text-align: center;
+        }
+
+        h1 {
+            color: #d6336c;
+            margin-bottom: 10px;
+        }
+
+        .subtitulo {
+            color: #666;
+            margin-bottom: 25px;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .boton {
+            display: inline-block;
+            background: #d6336c;
+            color: white;
+            padding: 13px 25px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: bold;
+            margin: 10px;
+        }
+
+        .boton:hover {
+            background: #b52b5a;
+        }
+
+        #imagen {
+            max-width: 100%;
+            max-height: 300px;
+            margin: 20px auto;
+            border-radius: 15px;
+            display: none;
+        }
+
+        #resultado {
+            margin-top: 25px;
+            font-size: 22px;
+            font-weight: bold;
+        }
+
+        .confianza {
+            margin-top: 10px;
+            color: #555;
+            font-size: 18px;
+        }
+
+        #estado {
+            margin-top: 15px;
+            color: #777;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="contenedor">
+
+    <h1>🍎 Detector de Manzanas</h1>
+
+    <p class="subtitulo">
+        Sube una imagen y la inteligencia artificial determinará
+        si la manzana es buena o mala.
+    </p>
+
+    <label class="boton" for="archivo">
+        📷 Seleccionar imagen
+    </label>
+
+    <input type="file" id="archivo" accept="image/*">
+
+    <img id="imagen" alt="Manzana seleccionada">
+
+    <br>
+
+    <button class="boton" onclick="analizar()">
+        🔍 Analizar manzana
+    </button>
+
+    <div id="estado"></div>
+
+    <div id="resultado"></div>
+
+    <div class="confianza" id="confianza"></div>
+
+</div>
+
+<script>
+
+    // Modelo de Teachable Machine
+    const URL = "./modelo/";
+
+    let modelo;
+    let imagenSeleccionada = false;
+
+    // Cargar modelo
+    async function cargarModelo() {
+
+        try {
+
+            document.getElementById("estado").innerText =
+                "Cargando modelo de inteligencia artificial...";
+
+            const modelURL = URL + "model.json";
+            const metadataURL = URL + "metadata.json";
+
+            modelo = await tmImage.load(modelURL, metadataURL);
+
+            document.getElementById("estado").innerText =
+                "✅ Modelo cargado correctamente";
+
+        } catch (error) {
+
+            console.error(error);
+
+            document.getElementById("estado").innerText =
+                "⚠️ No se pudo cargar el modelo.";
+
+        }
+    }
+
+    // Seleccionar imagen
+    document.getElementById("archivo").addEventListener("change", function(event) {
+
+        const archivo = event.target.files[0];
+
+        if (!archivo) {
+            return;
+        }
+
+        const imagen = document.getElementById("imagen");
+
+        imagen.src = URL.createObjectURL(archivo);
+
+        imagen.style.display = "block";
+
+        imagenSeleccionada = true;
+
+        document.getElementById("resultado").innerText = "";
+        document.getElementById("confianza").innerText = "";
+
+    });
+
+    // Analizar imagen
+    async function analizar() {
+
+        if (!modelo) {
+
+            alert("El modelo todavía no se ha cargado.");
+
+            return;
+        }
+
+        if (!imagenSeleccionada) {
+
+            alert("Primero selecciona una imagen.");
+
+            return;
+        }
+
+        const imagen = document.getElementById("imagen");
+
+        document.getElementById("estado").innerText =
+            "🔍 Analizando imagen...";
+
+        const predicciones = await modelo.predict(imagen);
+
+        let mayor = predicciones[0];
+
+        for (let i = 1; i < predicciones.length; i++) {
+
+            if (predicciones[i].probability > mayor.probability) {
+
+                mayor = predicciones[i];
+
+            }
+        }
+
+        const porcentaje =
+            (mayor.probability * 100).toFixed(2);
+
+        document.getElementById("resultado").innerText =
+            "🍎 Resultado: " + mayor.className;
+
+        document.getElementById("confianza").innerText =
+            "Confianza: " + porcentaje + "%";
+
+        document.getElementById("estado").innerText =
+            "✅ Análisis completado";
+
+    }
+
+    // Cargar modelo al iniciar
+    cargarModelo();
+
+</script>
+
+</body>
+</html>
