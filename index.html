@@ -3,10 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>Detector de Manzanas</title>
 
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest"></script>
+    <!-- TensorFlow.js -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.7.4/dist/tf.min.js"></script>
+
+    <!-- Teachable Machine -->
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
 
     <style>
         * {
@@ -15,22 +19,23 @@
 
         body {
             margin: 0;
-            font-family: Arial, sans-serif;
-            background: linear-gradient(135deg, #ffe6ef, #fff7fa);
             min-height: 100vh;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #ffe4ec, #fff5f8);
             display: flex;
             justify-content: center;
             align-items: center;
+            padding: 20px;
         }
 
         .contenedor {
-            width: 90%;
-            max-width: 600px;
+            width: 100%;
+            max-width: 500px;
             background: white;
-            padding: 35px;
             border-radius: 25px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            padding: 30px;
             text-align: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
         }
 
         h1 {
@@ -38,199 +43,373 @@
             margin-bottom: 10px;
         }
 
-        .subtitulo {
+        .descripcion {
             color: #666;
             margin-bottom: 25px;
         }
 
         input[type="file"] {
-            display: none;
+            width: 100%;
+            padding: 12px;
+            border: 2px dashed #f3a6bd;
+            border-radius: 12px;
+            background: #fff8fa;
+            cursor: pointer;
+            margin-bottom: 20px;
         }
 
-        .boton {
-            display: inline-block;
+        button {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
             background: #d6336c;
             color: white;
-            padding: 13px 25px;
-            border-radius: 12px;
-            cursor: pointer;
+            font-size: 16px;
             font-weight: bold;
-            margin: 10px;
+            cursor: pointer;
+            transition: 0.3s;
         }
 
-        .boton:hover {
-            background: #b52b5a;
+        button:hover {
+            background: #b82d5c;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
         }
 
         #imagen {
-            max-width: 100%;
-            max-height: 300px;
-            margin: 20px auto;
-            border-radius: 15px;
             display: none;
+            width: 100%;
+            max-height: 300px;
+            object-fit: contain;
+            margin: 20px 0;
+            border-radius: 15px;
         }
 
         #resultado {
-            margin-top: 25px;
-            font-size: 22px;
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 15px;
+            background: #fff0f5;
+            color: #444;
+            font-size: 18px;
+            font-weight: bold;
+            display: none;
+        }
+
+        .cargando {
+            color: #d6336c;
+            margin-top: 15px;
             font-weight: bold;
         }
 
-        .confianza {
-            margin-top: 10px;
-            color: #555;
-            font-size: 18px;
+        .error {
+            color: #dc3545;
+            margin-top: 15px;
+            font-weight: bold;
         }
 
-        #estado {
-            margin-top: 15px;
-            color: #777;
+        .barra {
+            width: 100%;
+            height: 12px;
+            background: #eee;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .progreso {
+            height: 100%;
+            background: #d6336c;
+            width: 0%;
+            transition: width 0.3s;
         }
     </style>
 </head>
 
 <body>
 
-<div class="contenedor">
+    <div class="contenedor">
 
-    <h1>🍎 Detector de Manzanas</h1>
+        <h1>🍎 Detector de Manzanas</h1>
 
-    <p class="subtitulo">
-        Sube una imagen y la inteligencia artificial determinará
-        si la manzana es buena o mala.
-    </p>
+        <p class="descripcion">
+            Selecciona una imagen para identificar si la manzana es buena o mala.
+        </p>
 
-    <label class="boton" for="archivo">
-        📷 Seleccionar imagen
-    </label>
+        <input
+            type="file"
+            id="archivo"
+            accept="image/*"
+        >
 
-    <input type="file" id="archivo" accept="image/*">
+        <img id="imagen" alt="Imagen seleccionada">
 
-    <img id="imagen" alt="Manzana seleccionada">
+        <button id="btnAnalizar" disabled>
+            Analizar manzana
+        </button>
 
-    <br>
+        <div id="estado" class="cargando">
+            Cargando modelo...
+        </div>
 
-    <button class="boton" onclick="analizar()">
-        🔍 Analizar manzana
-    </button>
+        <div class="barra">
+            <div id="progreso" class="progreso"></div>
+        </div>
 
-    <div id="estado"></div>
+        <div id="resultado"></div>
 
-    <div id="resultado"></div>
+    </div>
 
-    <div class="confianza" id="confianza"></div>
+    <script>
 
-</div>
+        // ==========================================
+        // UBICACIÓN DEL MODELO
+        // ==========================================
 
-<script>
+        const URL = "./";
 
-    // Modelo de Teachable Machine
-    const URL = "./";
+        let modelo = null;
+        let imagenSeleccionada = null;
 
-    let modelo;
-    let imagenSeleccionada = false;
 
-    // Cargar modelo
-    async function cargarModelo() {
+        // ==========================================
+        // ELEMENTOS HTML
+        // ==========================================
 
-        try {
-
-            document.getElementById("estado").innerText =
-                "Cargando modelo de inteligencia artificial...";
-
-            const modelURL = URL + "model.json";
-            const metadataURL = URL + "metadata.json";
-
-            modelo = await tmImage.load(modelURL, metadataURL);
-
-            document.getElementById("estado").innerText =
-                "✅ Modelo cargado correctamente";
-
-        } catch (error) {
-
-            console.error(error);
-
-            document.getElementById("estado").innerText =
-                "⚠️ No se pudo cargar el modelo.";
-
-        }
-    }
-
-    // Seleccionar imagen
-    document.getElementById("archivo").addEventListener("change", function(event) {
-
-        const archivo = event.target.files[0];
-
-        if (!archivo) {
-            return;
-        }
-
+        const archivo = document.getElementById("archivo");
         const imagen = document.getElementById("imagen");
+        const btnAnalizar = document.getElementById("btnAnalizar");
+        const estado = document.getElementById("estado");
+        const resultado = document.getElementById("resultado");
+        const progreso = document.getElementById("progreso");
 
-        imagen.src = URL.createObjectURL(archivo);
 
-        imagen.style.display = "block";
+        // ==========================================
+        // CARGAR MODELO
+        // ==========================================
 
-        imagenSeleccionada = true;
+        async function cargarModelo() {
 
-        document.getElementById("resultado").innerText = "";
-        document.getElementById("confianza").innerText = "";
+            try {
 
-    });
+                estado.innerText = "⏳ Cargando modelo...";
+                progreso.style.width = "30%";
 
-    // Analizar imagen
-    async function analizar() {
+                const modelURL = URL + "model.json";
+                const metadataURL = URL + "metadata.json";
 
-        if (!modelo) {
+                console.log("Model URL:", modelURL);
+                console.log("Metadata URL:", metadataURL);
 
-            alert("El modelo todavía no se ha cargado.");
+                modelo = await tmImage.load(
+                    modelURL,
+                    metadataURL
+                );
 
-            return;
-        }
+                progreso.style.width = "100%";
 
-        if (!imagenSeleccionada) {
+                estado.innerText = "✅ Modelo cargado correctamente";
+                estado.style.color = "#198754";
 
-            alert("Primero selecciona una imagen.");
+                btnAnalizar.disabled = false;
 
-            return;
-        }
+                console.log("Modelo cargado correctamente");
+                console.log("Cantidad de clases:", modelo.getTotalClasses());
 
-        const imagen = document.getElementById("imagen");
+            } catch (error) {
 
-        document.getElementById("estado").innerText =
-            "🔍 Analizando imagen...";
+                console.error("ERROR AL CARGAR EL MODELO:", error);
 
-        const predicciones = await modelo.predict(imagen);
+                estado.innerText =
+                    "❌ No se pudo cargar el modelo";
 
-        let mayor = predicciones[0];
+                estado.className = "error";
 
-        for (let i = 1; i < predicciones.length; i++) {
-
-            if (predicciones[i].probability > mayor.probability) {
-
-                mayor = predicciones[i];
+                progreso.style.width = "0%";
 
             }
+
         }
 
-        const porcentaje =
-            (mayor.probability * 100).toFixed(2);
 
-        document.getElementById("resultado").innerText =
-            "🍎 Resultado: " + mayor.className;
+        // ==========================================
+        // SELECCIONAR IMAGEN
+        // ==========================================
 
-        document.getElementById("confianza").innerText =
-            "Confianza: " + porcentaje + "%";
+        archivo.addEventListener("change", function(event) {
 
-        document.getElementById("estado").innerText =
-            "✅ Análisis completado";
+            const file = event.target.files[0];
 
-    }
+            if (!file) {
+                return;
+            }
 
-    // Cargar modelo al iniciar
-    cargarModelo();
+            const reader = new FileReader();
 
-</script>
+            reader.onload = function(e) {
+
+                imagen.src = e.target.result;
+
+                imagen.style.display = "block";
+
+                resultado.style.display = "none";
+
+                imagenSeleccionada = imagen;
+
+            };
+
+            reader.readAsDataURL(file);
+
+        });
+
+
+        // ==========================================
+        // ANALIZAR IMAGEN
+        // ==========================================
+
+        btnAnalizar.addEventListener("click", async function() {
+
+            if (!modelo) {
+
+                alert("El modelo todavía no está cargado.");
+
+                return;
+            }
+
+            if (!imagenSeleccionada) {
+
+                alert("Primero selecciona una imagen.");
+
+                return;
+            }
+
+            try {
+
+                btnAnalizar.disabled = true;
+
+                estado.innerText = "🔎 Analizando imagen...";
+                estado.className = "cargando";
+
+                resultado.style.display = "none";
+
+                const predicciones = await modelo.predict(
+                    imagenSeleccionada
+                );
+
+
+                // ==========================================
+                // BUSCAR LA PREDICCIÓN MÁS ALTA
+                // ==========================================
+
+                let mejorPrediccion = predicciones[0];
+
+                for (let i = 1; i < predicciones.length; i++) {
+
+                    if (
+                        predicciones[i].probability >
+                        mejorPrediccion.probability
+                    ) {
+
+                        mejorPrediccion = predicciones[i];
+
+                    }
+
+                }
+
+
+                const clase = mejorPrediccion.className;
+                const porcentaje =
+                    (mejorPrediccion.probability * 100).toFixed(2);
+
+
+                // ==========================================
+                // MOSTRAR RESULTADO
+                // ==========================================
+
+                let mensaje = "";
+
+                if (clase.toLowerCase() === "buenas") {
+
+                    mensaje =
+                        "🍎 Manzana BUENA<br>" +
+                        "Confianza: " +
+                        porcentaje +
+                        "%";
+
+                } else if (clase.toLowerCase() === "malas") {
+
+                    mensaje =
+                        "🍎 Manzana MALA<br>" +
+                        "Confianza: " +
+                        porcentaje +
+                        "%";
+
+                } else {
+
+                    mensaje =
+                        "🔎 Resultado: " +
+                        clase +
+                        "<br>" +
+                        "Confianza: " +
+                        porcentaje +
+                        "%";
+
+                }
+
+
+                resultado.innerHTML = mensaje;
+
+                resultado.style.display = "block";
+
+                estado.innerText =
+                    "✅ Análisis completado";
+
+                estado.style.color = "#198754";
+
+
+                // Mostrar todas las predicciones en consola
+
+                console.log("Predicciones:");
+
+                predicciones.forEach(function(prediccion) {
+
+                    console.log(
+                        prediccion.className +
+                        ": " +
+                        (prediccion.probability * 100).toFixed(2) +
+                        "%"
+                    );
+
+                });
+
+            } catch (error) {
+
+                console.error(
+                    "ERROR AL ANALIZAR:",
+                    error
+                );
+
+                estado.innerText =
+                    "❌ Error al analizar la imagen";
+
+            }
+
+            btnAnalizar.disabled = false;
+
+        });
+
+
+        // ==========================================
+        // INICIAR
+        // ==========================================
+
+        cargarModelo();
+
+    </script>
 
 </body>
 </html>
